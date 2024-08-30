@@ -26,7 +26,7 @@ export class RPCListener {
             if (rawChannel !== channel) return;
             const content = JSON.parse(rawContent) as RPCMessage;
             this._callbacks.forEach(data => {
-                if (data[0] == content.op) data[1](content);
+                if (data[0] == content.op) data[1](content.d);
             });
         });
     }
