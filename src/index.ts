@@ -7,36 +7,36 @@
 import { randomUUID } from 'crypto';
 import Redis from 'ioredis';
 
-export interface RPCMessage<T = any> {
+export interface RPCEvent<T = any> {
     /** The operation code sent (always a number) */
     op: number;
-    /** The data passed through the message */
+    /** The data passed through the event */
     d: T;
 }
 
 export class RPCListener {
     public readonly redis: Redis;
     public readonly channel: string;
-    private readonly _callbacks = new Map<string, [code: number, callback: (message: RPCMessage) => void]>();
+    private readonly _callbacks = new Map<string, [code: number, callback: (data: any) => void]>();
     constructor(channel: string, redis: Redis) {
         this.redis = redis;
         this.channel = channel;
         this.redis.subscribe(channel).catch(error => console.error(`RPC Error: ${error}`));
         this.redis.on('message', (rawChannel, rawContent) => {
             if (rawChannel !== channel) return;
-            const content = JSON.parse(rawContent) as RPCMessage;
+            const content = JSON.parse(rawContent) as RPCEvent;
             this._callbacks.forEach(data => {
                 if (data[0] == content.op) data[1](content.d);
             });
         });
     }
     /**
-     * Bind a function to an RPC message
+     * Bind a function to an RPC event
      * @param code The OPCode to send
-     * @param callback Function to execute when a message with the provided OPCode is sent
+     * @param callback Function to execute when an event with the provided OPCode is sent
      * @returns
      */
-    onMessage<T>(code: number, callback: (message: RPCMessage<T>) => void) {
+    onEvent<T>(code: number, callback: (payload: T) => void) {
         const uuid = randomUUID();
         this._callbacks.set(uuid, [ code, callback ]);
         return uuid;
@@ -64,12 +64,12 @@ export class RPCExecutor {
         this.channel = channel;
     }
     /**
-     * Send a message through the RPC
-     * @param code Sends a message through the RPC
+     * Send an event through the RPC
+     * @param code Sends an event through the RPC
      * @param data The payload to send (must be able to be converted into JSON)
      * @returns Redis `publish` response
      */
-    sendMessage(code: number, data: any): Promise<number> {
+    sendEvent(code: number, data: any): Promise<number> {
         return this.redis.publish(this.channel, JSON.stringify({ op: code, d: data }));
     }
 }
@@ -82,13 +82,13 @@ export class RPCMulti {
         this.listener = new RPCListener(channel, redisListener || redisExecutor.duplicate());
     }
     /**
-     * Bind a function to an RPC message
+     * Bind a function to an RPC event
      * @param code The OPCode to send
-     * @param callback Function to execute when a message with the provided OPCode is sent
+     * @param callback Function to execute when a event with the provided OPCode is sent
      * @returns
      */
-    onMessage<T>(code: number, callback: (message: RPCMessage<T>) => void) {
-        return this.listener.onMessage(code, callback);
+    onEvent<T>(code: number, callback: (data: T) => void) {
+        return this.listener.onEvent(code, callback);
     }
     /**
      * Removes all listeners by UUID or by OPCode
@@ -98,12 +98,12 @@ export class RPCMulti {
         return this.listener.removeListener(target);
     }
     /**
-     * Send a message through the RPC
-     * @param code Sends a message through the RPC
+     * Send an event through the RPC
+     * @param code Sends an event through the RPC
      * @param data The payload to send (must be able to be converted into JSON)
      * @returns Redis `publish` response
      */
-    sendMessage(code: number, data: any): Promise<number> {
-        return this.executor.sendMessage(code, data);
+    sendEvent(code: number, data: any): Promise<number> {
+        return this.executor.sendEvent(code, data);
     }
 }
